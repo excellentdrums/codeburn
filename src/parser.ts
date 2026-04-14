@@ -669,7 +669,9 @@ export async function parseAllSessions(dateRange?: DateRange, providerFilter?: s
 
   const geminiTmpDir = getGeminiTmpDir()
   const geminiDirs = await findGeminiProjectDirs(geminiTmpDir)
-  const geminiProjects = await scanGeminiProjectDirs(geminiDirs, seenMsgIds, dateRange)
+  const geminiProjects = (!providerFilter || providerFilter === 'gemini') 
+    ? await scanGeminiProjectDirs(geminiDirs, seenMsgIds, dateRange) 
+    : []
 
   const mergedMap = new Map<string, ProjectSummary>()
   
