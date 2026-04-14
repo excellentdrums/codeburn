@@ -1,6 +1,9 @@
 import { readdir, readFile } from 'fs/promises'
 import { basename, join } from 'path'
+import { homedir } from 'os'
 import { calculateCost, getShortModelName } from './models.js'
+import { BASH_TOOLS, hasMcpTools, classifyTurn } from './classifier.js'
+import { extractBashCommands } from './bash-utils.js'
 import { discoverAllSessions, getProvider } from './providers/index.js'
 import type { ParsedProviderCall } from './providers/types.js'
 import type {
@@ -16,8 +19,71 @@ import type {
   TokenUsage,
   ToolUseBlock,
 } from './types.js'
-import { classifyTurn, BASH_TOOLS } from './classifier.js'
-import { extractBashCommands } from './bash-utils.js'
+
+function getClaudeDir(): string {
+  return process.env['CLAUDE_CONFIG_DIR'] || join(homedir(), '.claude')
+}
+
+function getProjectsDir(): string {
+  return join(getClaudeDir(), 'projects')
+}
+
+function getGeminiDir(): string {
+  return process.env['GEMINI_CONFIG_DIR'] || join(homedir(), '.gemini')
+}
+
+function getGeminiTmpDir(): string {
+  return join(getGeminiDir(), 'tmp')
+}
+
+function getDesktopSessionsDir(): string {
+  if (process.platform === 'darwin') return join(homedir(), 'Library', 'Application Support', 'Claude', 'local-agent-mode-sessions')
+  if (process.platform === 'win32') return join(homedir(), 'AppData', 'Roaming', 'Claude', 'local-agent-mode-sessions')
+  return join(homedir(), '.config', 'Claude', 'local-agent-mode-sessions')
+}
+
+async function findDesktopProjectDirs(base: string): Promise<string[]> {
+  const results: string[] = []
+  async function walk(dir: string, depth: number): Promise<void> {
+    if (depth > 8) return
+    const entries = await readdir(dir).catch(() => [])
+    for (const entry of entries) {
+      if (entry === 'node_modules' || entry === '.git') continue
+      const full = join(dir, entry)
+      const s = await stat(full).catch(() => null)
+      if (!s?.isDirectory()) continue
+      if (entry === 'projects') {
+        const projectDirs = await readdir(full).catch(() => [])
+        for (const pd of projectDirs) {
+          const pdFull = join(full, pd)
+          const pdStat = await stat(pdFull).catch(() => null)
+          if (pdStat?.isDirectory()) results.push(pdFull)
+        }
+      } else {
+        await walk(full, depth + 1)
+      }
+    }
+  }
+  await walk(base, 0)
+  return results
+}
+
+export async function findGeminiProjectDirs(base: string): Promise<Array<{ path: string; name: string }>> {
+  const results: Array<{ path: string; name: string }> = []
+  const entries = await readdir(base).catch(() => [])
+  for (const entry of entries) {
+    const full = join(base, entry)
+    const s = await stat(full).catch(() => null)
+    if (s?.isDirectory()) {
+      const chatsDir = join(full, 'chats')
+      const cs = await stat(chatsDir).catch(() => null)
+      if (cs?.isDirectory()) {
+        results.push({ path: chatsDir, name: entry })
+      }
+    }
+  }
+  return results
+}
 
 function unsanitizePath(dirName: string): string {
   return dirName.replace(/-/g, '/')
@@ -38,18 +104,27 @@ function extractToolNames(content: ContentBlock[]): string[] {
 }
 
 function extractMcpTools(tools: string[]): string[] {
-  return tools.filter(t => t.startsWith('mcp__'))
+  return tools
+    .filter(t => t.startsWith('mcp_'))
+    .map(t => {
+      const parts = t.split('_')
+      if (parts.length >= 2) {
+        return parts[1].charAt(0).toUpperCase() + parts[1].slice(1)
+      }
+      return t
+    })
 }
 
 function extractCoreTools(tools: string[]): string[] {
-  return tools.filter(t => !t.startsWith('mcp__'))
+  return tools.filter(t => !t.startsWith('mcp_'))
 }
 
 function extractBashCommandsFromContent(content: ContentBlock[]): string[] {
   return content
-    .filter((b): b is ToolUseBlock => b.type === 'tool_use' && BASH_TOOLS.has((b as ToolUseBlock).name))
+    .filter((b): b is ToolUseBlock => b.type === 'tool_use' && BASH_TOOLS.has(b.name))
     .flatMap(b => {
-      const command = (b.input as Record<string, unknown>)?.command
+      const input = (b.input as any)
+      const command = input?.command ?? (typeof input === 'string' ? input : '')
       return typeof command === 'string' ? extractBashCommands(command) : []
     })
 }
@@ -225,9 +300,8 @@ function buildSessionSummary(
         toolBreakdown[tool].calls++
       }
       for (const mcp of call.mcpTools) {
-        const server = mcp.split('__')[1] ?? mcp
-        mcpBreakdown[server] = mcpBreakdown[server] ?? { calls: 0 }
-        mcpBreakdown[server].calls++
+        mcpBreakdown[mcp] = mcpBreakdown[mcp] ?? { calls: 0 }
+        mcpBreakdown[mcp].calls++
       }
       for (const cmd of call.bashCommands) {
         bashBreakdown[cmd] = bashBreakdown[cmd] ?? { calls: 0 }
@@ -298,6 +372,7 @@ async function parseSessionFile(
   return buildSessionSummary(sessionId, project, classified)
 }
 
+<<<<<<< HEAD
 async function collectJsonlFiles(dirPath: string): Promise<string[]> {
   const files = await readdir(dirPath).catch(() => [])
   const jsonlFiles = files.filter(f => f.endsWith('.jsonl')).map(f => join(dirPath, f))
@@ -312,6 +387,87 @@ async function collectJsonlFiles(dirPath: string): Promise<string[]> {
   }
 
   return jsonlFiles
+=======
+export async function parseGeminiSessionFile(
+  filePath: string,
+  project: string,
+  seenMsgIds: Set<string>,
+  dateRange?: DateRange,
+): Promise<SessionSummary | null> {
+  let raw: string
+  try {
+    raw = await readFile(filePath, 'utf-8')
+  } catch {
+    return null
+  }
+
+  let data: any
+  try {
+    data = JSON.parse(raw)
+  } catch {
+    return null
+  }
+
+  if (!data.messages || !Array.isArray(data.messages)) return null
+
+  const entries: JournalEntry[] = data.messages.map((m: any): JournalEntry => {
+    const timestamp = m.timestamp || ''
+    const sessionId = data.sessionId || ''
+    
+    if (m.type === 'user') {
+      const text = typeof m.content === 'string' ? m.content : (m.content?.[0]?.text ?? '')
+      return { type: 'user', timestamp, sessionId, message: { role: 'user', content: text } }
+    }
+    
+    if (m.type === 'gemini') {
+      const content: ContentBlock[] = [
+        { type: 'text', text: m.content ?? '' },
+        ...(m.toolCalls?.map((tc: any) => ({
+          type: 'tool_use',
+          id: tc.id,
+          name: tc.name,
+          input: tc.args,
+        })) ?? [])
+      ]
+      
+      return {
+        type: 'assistant',
+        timestamp,
+        sessionId,
+        message: {
+          id: m.id,
+          model: m.model || 'gemini',
+          type: 'message',
+          role: 'assistant',
+          content,
+          usage: {
+            input_tokens: m.tokens?.input ?? 0,
+            output_tokens: (m.tokens?.output ?? 0) + (m.tokens?.thoughts ?? 0),
+            cache_read_input_tokens: m.tokens?.cached ?? 0,
+            cache_creation_input_tokens: 0,
+          }
+        }
+      }
+    }
+    
+    return { type: m.type, timestamp, sessionId }
+  })
+
+  let filteredEntries = entries
+  if (dateRange) {
+    filteredEntries = entries.filter(e => {
+      if (!e.timestamp) return e.type === 'user'
+      const ts = new Date(e.timestamp)
+      return ts >= dateRange.start && ts <= dateRange.end
+    })
+    if (filteredEntries.length === 0) return null
+  }
+
+  const turns = groupIntoTurns(filteredEntries, seenMsgIds)
+  const classified = turns.map(classifyTurn)
+
+  return buildSessionSummary(data.sessionId || basename(filePath, '.json'), project, classified)
+>>>>>>> fe31aed (feat: implement Gemini session support)
 }
 
 async function scanProjectDirs(dirs: Array<{ path: string; name: string }>, seenMsgIds: Set<string>, dateRange?: DateRange): Promise<ProjectSummary[]> {
@@ -330,18 +486,39 @@ async function scanProjectDirs(dirs: Array<{ path: string; name: string }>, seen
     }
   }
 
-  const projects: ProjectSummary[] = []
-  for (const [dirName, sessions] of projectMap) {
-    projects.push({
-      project: dirName,
-      projectPath: unsanitizePath(dirName),
-      sessions,
-      totalCostUSD: sessions.reduce((s, sess) => s + sess.totalCostUSD, 0),
-      totalApiCalls: sessions.reduce((s, sess) => s + sess.apiCalls, 0),
-    })
+  return Array.from(projectMap.entries()).map(([dirName, sessions]) => ({
+    project: dirName,
+    projectPath: unsanitizePath(dirName),
+    sessions,
+    totalCostUSD: sessions.reduce((s, sess) => s + sess.totalCostUSD, 0),
+    totalApiCalls: sessions.reduce((s, sess) => s + sess.apiCalls, 0),
+  }))
+}
+
+export async function scanGeminiProjectDirs(dirs: Array<{ path: string; name: string }>, seenMsgIds: Set<string>, dateRange?: DateRange): Promise<ProjectSummary[]> {
+  const projectMap = new Map<string, SessionSummary[]>()
+
+  for (const { path: dirPath, name: dirName } of dirs) {
+    const files = await readdir(dirPath).catch(() => [])
+    const jsonFiles = files.filter(f => f.endsWith('.json') && f.startsWith('session-'))
+
+    for (const file of jsonFiles) {
+      const session = await parseGeminiSessionFile(join(dirPath, file), dirName, seenMsgIds, dateRange)
+      if (session && session.apiCalls > 0) {
+        const existing = projectMap.get(dirName) ?? []
+        existing.push(session)
+        projectMap.set(dirName, existing)
+      }
+    }
   }
 
-  return projects
+  return Array.from(projectMap.entries()).map(([dirName, sessions]) => ({
+    project: dirName,
+    projectPath: dirName,
+    sessions,
+    totalCostUSD: sessions.reduce((s, sess) => s + sess.totalCostUSD, 0),
+    totalApiCalls: sessions.reduce((s, sess) => s + sess.apiCalls, 0),
+  }))
 }
 
 function providerCallToTurn(call: ParsedProviderCall): ParsedTurn {
@@ -490,8 +667,13 @@ export async function parseAllSessions(dateRange?: DateRange, providerFilter?: s
     otherProjects.push(...projects)
   }
 
+  const geminiTmpDir = getGeminiTmpDir()
+  const geminiDirs = await findGeminiProjectDirs(geminiTmpDir)
+  const geminiProjects = await scanGeminiProjectDirs(geminiDirs, seenMsgIds, dateRange)
+
   const mergedMap = new Map<string, ProjectSummary>()
-  for (const p of [...claudeProjects, ...otherProjects]) {
+  
+  const addProject = (p: ProjectSummary) => {
     const existing = mergedMap.get(p.project)
     if (existing) {
       existing.sessions.push(...p.sessions)
@@ -502,7 +684,9 @@ export async function parseAllSessions(dateRange?: DateRange, providerFilter?: s
     }
   }
 
-  const result = Array.from(mergedMap.values()).sort((a, b) => b.totalCostUSD - a.totalCostUSD)
-  cachePut(key, result)
-  return result
+  claudeProjects.forEach(addProject)
+  otherProjects.forEach(addProject)
+  geminiProjects.forEach(addProject)
+
+  return Array.from(mergedMap.values()).sort((a, b) => b.totalCostUSD - a.totalCostUSD)
 }
