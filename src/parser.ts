@@ -1,4 +1,4 @@
-import { readdir, readFile } from 'fs/promises'
+import { readdir, readFile, stat } from 'fs/promises'
 import { basename, join } from 'path'
 import { homedir } from 'os'
 import { calculateCost, getShortModelName } from './models.js'
@@ -120,8 +120,12 @@ function extractCoreTools(tools: string[]): string[] {
 }
 
 function extractBashCommandsFromContent(content: ContentBlock[]): string[] {
-  return content
-    .filter((b): b is ToolUseBlock => b.type === 'tool_use' && BASH_TOOLS.has(b.name))
+  const toolBlocks = content.filter((b): b is ToolUseBlock => b.type === 'tool_use')
+  return toolBlocks
+    .filter(b => {
+      const match = BASH_TOOLS.has(b.name)
+      return match
+    })
     .flatMap(b => {
       const input = (b.input as any)
       const command = input?.command ?? (typeof input === 'string' ? input : '')
@@ -304,8 +308,9 @@ function buildSessionSummary(
         mcpBreakdown[mcp].calls++
       }
       for (const cmd of call.bashCommands) {
-        bashBreakdown[cmd] = bashBreakdown[cmd] ?? { calls: 0 }
-        bashBreakdown[cmd].calls++
+        const base = cmd.split(/\s+/)[0]
+        bashBreakdown[base] = bashBreakdown[base] ?? { calls: 0 }
+        bashBreakdown[base].calls++
       }
 
       if (!firstTs || call.timestamp < firstTs) firstTs = call.timestamp
@@ -372,7 +377,6 @@ async function parseSessionFile(
   return buildSessionSummary(sessionId, project, classified)
 }
 
-<<<<<<< HEAD
 async function collectJsonlFiles(dirPath: string): Promise<string[]> {
   const files = await readdir(dirPath).catch(() => [])
   const jsonlFiles = files.filter(f => f.endsWith('.jsonl')).map(f => join(dirPath, f))
@@ -387,14 +391,14 @@ async function collectJsonlFiles(dirPath: string): Promise<string[]> {
   }
 
   return jsonlFiles
-=======
-export async function parseGeminiSessionFile(
+  }
+
+  export async function parseGeminiSessionFile(
   filePath: string,
   project: string,
   seenMsgIds: Set<string>,
   dateRange?: DateRange,
-): Promise<SessionSummary | null> {
-  let raw: string
+  ): Promise<SessionSummary | null> {  let raw: string
   try {
     raw = await readFile(filePath, 'utf-8')
   } catch {
@@ -467,7 +471,6 @@ export async function parseGeminiSessionFile(
   const classified = turns.map(classifyTurn)
 
   return buildSessionSummary(data.sessionId || basename(filePath, '.json'), project, classified)
->>>>>>> fe31aed (feat: implement Gemini session support)
 }
 
 async function scanProjectDirs(dirs: Array<{ path: string; name: string }>, seenMsgIds: Set<string>, dateRange?: DateRange): Promise<ProjectSummary[]> {
@@ -544,7 +547,7 @@ function providerCallToTurn(call: ParsedProviderCall): ParsedTurn {
     hasPlanMode: tools.includes('EnterPlanMode'),
     speed: call.speed,
     timestamp: call.timestamp,
-    bashCommands: [],
+    bashCommands: call.bashCommands ?? [],
     deduplicationKey: call.deduplicationKey,
   }
 
@@ -681,6 +684,30 @@ export async function parseAllSessions(dateRange?: DateRange, providerFilter?: s
       existing.sessions.push(...p.sessions)
       existing.totalCostUSD += p.totalCostUSD
       existing.totalApiCalls += p.totalApiCalls
+      
+      const merge = (target: Record<string, { calls: number }>, source: Record<string, { calls: number }>) => {
+        for (const [key, val] of Object.entries(source)) {
+          target[key] = (target[key] ?? { calls: 0 })
+          target[key].calls += val.calls
+        }
+      }
+
+      for (const session of p.sessions) {
+        existing.bashBreakdown = existing.bashBreakdown ?? {}
+        existing.mcpBreakdown = existing.mcpBreakdown ?? {}
+        existing.toolBreakdown = existing.toolBreakdown ?? {}
+        existing.modelBreakdown = existing.modelBreakdown ?? {}
+
+        merge(existing.bashBreakdown, session.bashBreakdown)
+        merge(existing.mcpBreakdown, session.mcpBreakdown)
+        merge(existing.toolBreakdown, session.toolBreakdown)
+        
+        for (const [key, val] of Object.entries(session.modelBreakdown)) {
+          existing.modelBreakdown[key] = (existing.modelBreakdown[key] ?? { calls: 0, costUSD: 0, tokens: { inputTokens: 0, outputTokens: 0, cacheCreationInputTokens: 0, cacheReadInputTokens: 0, webSearchRequests: 0 } })
+          existing.modelBreakdown[key].calls += val.calls
+          existing.modelBreakdown[key].costUSD += val.costUSD
+        }
+      }
     } else {
       mergedMap.set(p.project, { ...p })
     }

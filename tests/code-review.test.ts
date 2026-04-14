@@ -5,7 +5,7 @@ import { ParsedTurn } from '../src/types.js'
 describe('classifyTurn - review', () => {
   it('classifies messages with review keywords as review', () => {
     const turn: ParsedTurn = {
-      userMessage: 'Please review this pull request',
+      userMessage: 'This looks good, LGTM!',
       assistantCalls: [],
       timestamp: '2026-04-14T12:00:00Z',
       sessionId: 'test-1'

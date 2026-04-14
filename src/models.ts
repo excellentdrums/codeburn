@@ -37,11 +37,17 @@ const FALLBACK_PRICING: Record<string, ModelCosts> = {
   'claude-3-5-haiku': { inputCostPerToken: 0.8e-6, outputCostPerToken: 4e-6, cacheWriteCostPerToken: 1e-6, cacheReadCostPerToken: 0.08e-6, webSearchCostPerRequest: WEB_SEARCH_COST, fastMultiplier: 1 },
   'gpt-4o': { inputCostPerToken: 2.5e-6, outputCostPerToken: 10e-6, cacheWriteCostPerToken: 2.5e-6, cacheReadCostPerToken: 1.25e-6, webSearchCostPerRequest: WEB_SEARCH_COST, fastMultiplier: 1 },
   'gpt-4o-mini': { inputCostPerToken: 0.15e-6, outputCostPerToken: 0.6e-6, cacheWriteCostPerToken: 0.15e-6, cacheReadCostPerToken: 0.075e-6, webSearchCostPerRequest: WEB_SEARCH_COST, fastMultiplier: 1 },
-  'gemini-2.5-pro': { inputCostPerToken: 1.25e-6, outputCostPerToken: 10e-6, cacheWriteCostPerToken: 1.25e-6, cacheReadCostPerToken: 0.315e-6, webSearchCostPerRequest: WEB_SEARCH_COST, fastMultiplier: 1 },
   'gpt-5.3-codex': { inputCostPerToken: 2.5e-6, outputCostPerToken: 10e-6, cacheWriteCostPerToken: 2.5e-6, cacheReadCostPerToken: 1.25e-6, webSearchCostPerRequest: WEB_SEARCH_COST, fastMultiplier: 1 },
   'gpt-5.4': { inputCostPerToken: 2.5e-6, outputCostPerToken: 10e-6, cacheWriteCostPerToken: 2.5e-6, cacheReadCostPerToken: 1.25e-6, webSearchCostPerRequest: WEB_SEARCH_COST, fastMultiplier: 1 },
   'gpt-5.4-mini': { inputCostPerToken: 0.4e-6, outputCostPerToken: 1.6e-6, cacheWriteCostPerToken: 0.4e-6, cacheReadCostPerToken: 0.2e-6, webSearchCostPerRequest: WEB_SEARCH_COST, fastMultiplier: 1 },
   'gpt-5': { inputCostPerToken: 2.5e-6, outputCostPerToken: 10e-6, cacheWriteCostPerToken: 2.5e-6, cacheReadCostPerToken: 1.25e-6, webSearchCostPerRequest: WEB_SEARCH_COST, fastMultiplier: 1 },
+  'gemini-3.1-pro': { inputCostPerToken: 2e-6, outputCostPerToken: 12e-6, cacheWriteCostPerToken: 2e-6, cacheReadCostPerToken: 0.5e-6, webSearchCostPerRequest: WEB_SEARCH_COST, fastMultiplier: 1 },
+  'gemini-3.1-flash': { inputCostPerToken: 0.5e-6, outputCostPerToken: 3e-6, cacheWriteCostPerToken: 0.5e-6, cacheReadCostPerToken: 0.125e-6, webSearchCostPerRequest: WEB_SEARCH_COST, fastMultiplier: 1 },
+  'gemini-3.1-flash-lite': { inputCostPerToken: 0.25e-6, outputCostPerToken: 1.5e-6, cacheWriteCostPerToken: 0.25e-6, cacheReadCostPerToken: 0.0625e-6, webSearchCostPerRequest: WEB_SEARCH_COST, fastMultiplier: 1 },
+  'gemini-3-flash': { inputCostPerToken: 0.5e-6, outputCostPerToken: 3e-6, cacheWriteCostPerToken: 0.5e-6, cacheReadCostPerToken: 0.125e-6, webSearchCostPerRequest: WEB_SEARCH_COST, fastMultiplier: 1 },
+  'gemini-2.5-pro': { inputCostPerToken: 1.25e-6, outputCostPerToken: 10e-6, cacheWriteCostPerToken: 1.25e-6, cacheReadCostPerToken: 0.315e-6, webSearchCostPerRequest: WEB_SEARCH_COST, fastMultiplier: 1 },
+  'gemini-2.5-flash': { inputCostPerToken: 0.3e-6, outputCostPerToken: 2.5e-6, cacheWriteCostPerToken: 0.3e-6, cacheReadCostPerToken: 0.075e-6, webSearchCostPerRequest: WEB_SEARCH_COST, fastMultiplier: 1 },
+  'gemini-2.5-flash-lite': { inputCostPerToken: 0.1e-6, outputCostPerToken: 0.4e-6, cacheWriteCostPerToken: 0.1e-6, cacheReadCostPerToken: 0.025e-6, webSearchCostPerRequest: WEB_SEARCH_COST, fastMultiplier: 1 },
 }
 
 let pricingCache: Map<string, ModelCosts> | null = null
@@ -114,7 +120,10 @@ export async function loadPricing(): Promise<void> {
 
 function getCanonicalName(model: string): string {
   return model
+    .split('/')
+    .pop()!
     .replace(/@.*$/, '')
+    .replace(/-(preview|latest|001|002|003|004|005|exp|experimental|search)$/g, '')
     .replace(/-\d{8}$/, '')
 }
 
@@ -181,10 +190,16 @@ export function getShortModelName(model: string): string {
     'gpt-5.4': 'GPT-5.4',
     'gpt-5.3-codex': 'GPT-5.3 Codex',
     'gpt-5': 'GPT-5',
+    'gemini-3.1-pro': 'Gemini 3.1 Pro',
+    'gemini-3.1-flash-lite': 'Gemini 3.1 Flash-Lite',
+    'gemini-3.1-flash': 'Gemini 3.1 Flash',
+    'gemini-3-flash': 'Gemini 3 Flash',
     'gemini-2.5-pro': 'Gemini 2.5 Pro',
+    'gemini-2.5-flash-lite': 'Gemini 2.5 Flash-Lite',
+    'gemini-2.5-flash': 'Gemini 2.5 Flash',
   }
   for (const [key, name] of Object.entries(shortNames)) {
-    if (canonical.startsWith(key)) return name
+    if (canonical === key) return name
   }
   return canonical
 }

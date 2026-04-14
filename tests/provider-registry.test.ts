@@ -3,7 +3,7 @@ import { providers } from '../src/providers/index.js'
 
 describe('provider registry', () => {
   it('has claude and codex providers', () => {
-    expect(providers.map(p => p.name)).toEqual(['claude', 'codex'])
+    expect(providers.map(p => p.name)).toEqual(['claude', 'codex', 'gemini'])
   })
 
   it('claude tool display names are identity', () => {

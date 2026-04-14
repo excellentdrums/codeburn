@@ -9,12 +9,12 @@ const DEBUG_KEYWORDS = /\b(fix|bug|error|broken|failing|crash|issue|debug|traceb
 const FEATURE_KEYWORDS = /\b(add|create|implement|new|build|feature|introduce|set\s*up|scaffold|generate)\b/i
 const REFACTOR_KEYWORDS = /\b(refactor|clean\s*up|rename|reorganize|simplify|extract|restructure|move|migrate|split)\b/i
 const BRAINSTORM_KEYWORDS = /\b(brainstorm|idea|what\s+if|explore|think\s+about|approach|strategy|design|consider|how\s+should|what\s+would|opinion|suggest|recommend)\b/i
-const REVIEW_KEYWORDS = /\b(review|critique|audit|verify|improve)\b/i
+const REVIEW_KEYWORDS = /\b(lgtm|nit|nitpick|pr|diff|approve|approved|changes\s*requested|looks\s*good)\b/i
 const RESEARCH_KEYWORDS = /\b(research|investigate|look\s+into|find\s+out|check|search|analyze|review|understand|explain|how\s+does|what\s+is|show\s+me|list|compare)\b/i
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'FileEditTool', 'FileWriteTool', 'NotebookEdit'])
 const READ_TOOLS = new Set(['Read', 'Grep', 'Glob', 'FileReadTool', 'GrepTool', 'GlobTool'])
-export const BASH_TOOLS = new Set(['Bash', 'BashTool', 'PowerShellTool'])
+export const BASH_TOOLS = new Set(['Bash', 'BashTool', 'PowerShellTool', 'run_shell_command'])
 const TASK_TOOLS = new Set(['TaskCreate', 'TaskUpdate', 'TaskGet', 'TaskList', 'TaskOutput', 'TaskStop', 'TodoWrite'])
 const SEARCH_TOOLS = new Set(['WebSearch', 'WebFetch', 'ToolSearch'])
 

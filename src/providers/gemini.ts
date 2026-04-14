@@ -1,8 +1,10 @@
 import { join, basename } from 'path'
 import { readFile } from 'fs/promises'
 import { homedir } from 'os'
-import { getShortModelName } from '../models.js'
+import { getShortModelName, calculateCost } from '../models.js'
 import { findGeminiProjectDirs } from '../parser.js'
+import { BASH_TOOLS } from '../classifier.js'
+import { extractBashCommands } from '../bash-utils.js'
 import type { Provider, SessionParser, SessionSource, ParsedProviderCall } from './types.js'
 
 function getGeminiDir(): string {
@@ -50,6 +52,25 @@ export const gemini: Provider = {
             if (seenKeys.has(id)) continue
             seenKeys.add(id)
 
+            const tools = m.toolCalls?.map((tc: any) => tc.name) ?? []
+            const bashCommands: string[] = []
+            for (const tc of m.toolCalls ?? []) {
+              if (BASH_TOOLS.has(tc.name)) {
+                const cmd = tc.args?.command ?? (typeof tc.args === 'string' ? tc.args : '')
+                if (typeof cmd === 'string') bashCommands.push(...extractBashCommands(cmd))
+              }
+            }
+
+            const costUSD = calculateCost(
+              m.model || 'gemini',
+              m.tokens?.input ?? 0,
+              (m.tokens?.output ?? 0) + (m.tokens?.thoughts ?? 0),
+              0,
+              m.tokens?.cached ?? 0,
+              0,
+              'standard'
+            )
+
             yield {
               provider: 'gemini',
               model: m.model || 'gemini',
@@ -60,13 +81,14 @@ export const gemini: Provider = {
               cachedInputTokens: 0,
               reasoningTokens: m.tokens?.thoughts ?? 0,
               webSearchRequests: 0,
-              costUSD: 0, // Costs are calculated later
-              tools: m.toolCalls?.map((tc: any) => tc.name) ?? [],
+              costUSD,
+              tools,
               timestamp: m.timestamp ?? '',
               speed: 'standard',
               deduplicationKey: id,
-              userMessage: '', // Parsed later
-              sessionId: data.sessionId ?? 'unknown'
+              userMessage: '',
+              sessionId: data.sessionId ?? 'unknown',
+              bashCommands
             }
           }
         }

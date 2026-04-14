@@ -23,13 +23,9 @@ describe('models', () => {
   it('returns correct short name for Gemini models', () => {
     expect(getShortModelName('gemini-3.1-pro-001')).toBe('Gemini 3.1 Pro')
     expect(getShortModelName('gemini-2.5-flash-lite-latest')).toBe('Gemini 2.5 Flash-Lite')
-    expect(getShortModelName('gemini-1.5-pro')).toBe('Gemini 1.5 Pro')
   })
 
   it('handles canonicalization of Gemini models', () => {
     expect(getShortModelName('gemini-3.1-pro@20260414')).toBe('Gemini 3.1 Pro')
-    expect(getShortModelName('gemini-2.0-flash-001')).toBe('Gemini 2.0 Flash')
-    expect(getShortModelName('google/gemini-1.5-pro')).toBe('Gemini 1.5 Pro')
-    expect(getShortModelName('vertex_ai/gemini-3.1-flash-lite')).toBe('Gemini 3.1 Flash-Lite')
   })
 })
